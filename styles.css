@@ -10,10 +10,8 @@
 .filter .menu{position:absolute;left:0;right:0;top:calc(100% + 6px);background:#0e1324;border:1px solid #26304d;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-height:260px;overflow:auto;z-index:20;display:none}
 .filter.open .menu{display:block}.menu .opt{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid #1b2340}.menu .opt:last-child{border-bottom:none}
 .menu .opt input{accent-color:var(--accent)}
-.range{display:flex;flex-direction:column;gap:6px}.range .row{display:flex;align-items:center;gap:8px}.range input[type=range]{width:100%}.badge{padding:4px 8px;background:#0e1324;border:1px solid #26304d;border-radius:8px;font-size:12px}
 .kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kpi{padding:10px;border-radius:10px;background:#0e1324}.kpi .n{font-size:22px;font-weight:700;margin-top:6px}
 #map{width:100%;height:100%;min-height:320px;border-radius:12px;overflow:hidden}
 .table{max-height:220px;overflow:auto;border:1px solid #26304d;border-radius:10px}.table table{width:100%;border-collapse:collapse}
 .table th,.table td{padding:8px;border-bottom:1px solid #26304d;font-size:12px}.table th{position:sticky;top:0;background:#101530}
-.note{color:#a8b0c3;font-size:12px;margin-top:6px}
-.err{background:#3a1120;border:1px solid #5b2235;color:#ffd6df;padding:10px;border-radius:8px;margin:8px 0;display:none}
+.note{color:#a8b0c3;font-size:12px;margin-left:auto}
