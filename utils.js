@@ -55,3 +55,9 @@ function buildMultiSelect(container, label, values){
 
   return ()=> state; // getter
 }
+
+// Helpers
+function isTrue(val){
+  const s = String(val??'').trim().toLowerCase();
+  return ['ja','waar','true','1','x','y'].includes(s);
+}

@@ -23,7 +23,7 @@
     <aside class="sidebar">
       <header class="card">
         <h1>🗺️ Kaart & live aantallen</h1>
-        <p class="sub">Data is ingeladen uit je Excel (als JSON). Filters zijn gebaseerd op **alle** kolomnamen.</p>
+        <p class="sub">Filters zijn gebaseerd op alle kolomnamen. Deelname-jaren zijn samengevoegd tot één filter.</p>
       </header>
 
       <section class="card">
@@ -60,6 +60,8 @@
     const DATA_URL = 'data/schools.json'; // built from your Excel
     let allRows = [], filtered = [];
     let filterGetters = {};
+    let seasonFilterGetter = null;
+    let seasonMap = {}; // label -> source column
 
     const map = L.map('map').setView([52.2,5.3],7);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19}).addTo(map);
@@ -67,7 +69,9 @@
 
     function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
     function buildPopup(row){
-      const title = row['NAAM SCHOOL'] || row['naam'] || row['School'] || row['school'] || 'Onbekend';
+      const titleCandidates = ['NAAM SCHOOL','naam','School','school'];
+      const titleKey = titleCandidates.find(k=>k in row) || null;
+      const title = titleKey ? row[titleKey] : 'Onbekend';
       const pairs = Object.entries(row).map(([k,v])=>`<tr><th style="text-align:left;padding-right:8px">${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join('');
       return `<div><strong>${escapeHtml(title)}</strong><br/><table>${pairs}</table></div>`;
     }
@@ -89,14 +93,14 @@
     function findLat(row){
       for(const k of Object.keys(row)){
         const key = k.toLowerCase();
-        if(key==='lat' || key==='latitude' || key==='breedtegraad') return parseFloat(row[k].toString().replace(',','.'));
+        if(key==='lat' || key==='latitude' || key==='breedtegraad') return parseFloat(String(row[k]).replace(',','.'));
       }
       return NaN;
     }
     function findLon(row){
       for(const k of Object.keys(row)){
         const key = k.toLowerCase();
-        if(key==='lon' || key==='long' || key==='longitude' || key==='lengtegraad') return parseFloat(row[k].toString().replace(',','.'));
+        if(key==='lon' || key==='long' || key==='longitude' || key==='lengtegraad') return parseFloat(String(row[k]).replace(',','.'));
       }
       return NaN;
     }
@@ -124,16 +128,31 @@
       document.getElementById('k_total').textContent = rows.length;
     }
 
+    function normalize(val){ return String(val??'').trim().toLowerCase(); }
+    function boolFrom(val){ return ['ja','waar','true','1','x','y'].includes(normalize(val)); }
+
     function applyFilters(){
       const active = {};
       for(const [key, getter] of Object.entries(filterGetters)){
         active[key] = new Set(Array.from(getter()));
       }
+      const selectedSeasons = seasonFilterGetter ? new Set(Array.from(seasonFilterGetter())) : new Set();
+
       filtered = allRows.filter(r=>{
+        // Generic column filters: AND across filters, match exact value
         for(const [k,set] of Object.entries(active)){
           if(set.size===0) continue;
           const val = (r[k]??'').toString();
           if(!set.has(val)) return false;
+        }
+        // Season filter: OR across selected seasons, include rows with JA/TRUE for at least one selected season
+        if(selectedSeasons.size>0){
+          let ok = false;
+          for(const seasonLabel of selectedSeasons){
+            const srcCol = seasonMap[seasonLabel];
+            if(srcCol && boolFrom(r[srcCol])){ ok = true; break; }
+          }
+          if(!ok) return false;
         }
         return true;
       });
@@ -150,17 +169,48 @@
       renderTable(filtered);
     }
 
+    function detectSeasonColumns(sample){
+      const found = {};
+      for(const col of Object.keys(sample)){
+        const lower = col.toLowerCase();
+        // Only participation columns, avoid "aantal kinderen"
+        if(!/deelname/.test(lower)) continue;
+        const m = col.match(/(20\d{2})\s*[\/-]\s*(20\d{2})/);
+        if(m){
+          const label = `${m[1]}/${m[2]}`;
+          found[label] = col;
+        }
+      }
+      return found; // { '2022/2023': 'DEELNAME 2022/2023', ... }
+    }
+
     function buildFilters(rows){
       const container = document.getElementById('filters');
       container.innerHTML='';
       filterGetters = {};
+      seasonFilterGetter = null;
+      seasonMap = {};
+
       if(!rows.length) return;
 
       const sample = rows[0];
+      // Build combined season filter
+      seasonMap = detectSeasonColumns(sample);
+      if(Object.keys(seasonMap).length){
+        const seasonValues = Object.keys(seasonMap);
+        const getter = buildMultiSelect(container, 'Deelname (jaren)', seasonValues);
+        if(getter) seasonFilterGetter = getter;
+      }
+
+      // Build generic filters for all other columns except coords and the specific season columns we just combined
+      const exclude = new Set(Object.values(seasonMap).map(s=>s.toLowerCase()));
       const cols = Object.keys(sample).filter(k=>{
         const lower = k.toLowerCase();
-        return !['lat','lon','latitude','longitude','breedtegraad','lengtegraad'].includes(lower);
+        if(['lat','lon','latitude','longitude','breedtegraad','lengtegraad'].includes(lower)) return false;
+        if(exclude.has(lower)) return false;
+        return true;
       });
+
       cols.forEach(col=>{
         const values = rows.map(r=> r[col]);
         const getter = buildMultiSelect(container, col, values);
