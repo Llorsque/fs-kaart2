@@ -23,7 +23,7 @@
     <aside class="sidebar">
       <header class="card">
         <h1>🗺️ Kaart & live aantallen</h1>
-        <p class="sub">Filters zijn gebaseerd op alle kolomnamen. Deelname-jaren zijn samengevoegd tot één filter.</p>
+        <p class="sub">Deelname-jaren samengevoegd. Aantal kinderen met schuif (min/max), gekoppeld aan gekozen jaren.</p>
       </header>
 
       <section class="card">
@@ -57,11 +57,15 @@
   <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
   <script src="utils.js"></script>
   <script>
-    const DATA_URL = 'data/schools.json'; // built from your Excel
+    const DATA_URL = 'data/schools.json';
     let allRows = [], filtered = [];
     let filterGetters = {};
     let seasonFilterGetter = null;
-    let seasonMap = {}; // label -> source column
+    let seasonMap = {}; // label -> 'DEELNAME ...' column
+    let countMap = {};  // label -> 'AANTAL KINDEREN ...' column
+    let rangeGetter = null;
+
+    const EXCLUDE_FILTERS = ['naam school','naam','adres','huisnummer','huisnummer-toevoeging','postcode','plaatsnaam correspondentieadres'];
 
     const map = L.map('map').setView([52.2,5.3],7);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19}).addTo(map);
@@ -130,6 +134,7 @@
 
     function normalize(val){ return String(val??'').trim().toLowerCase(); }
     function boolFrom(val){ return ['ja','waar','true','1','x','y'].includes(normalize(val)); }
+    function toInt(val){ const s = String(val??'').replace(/[^0-9-]/g,'').trim(); if(!s) return null; const n = parseInt(s,10); return isFinite(n)? n : null; }
 
     function applyFilters(){
       const active = {};
@@ -137,23 +142,40 @@
         active[key] = new Set(Array.from(getter()));
       }
       const selectedSeasons = seasonFilterGetter ? new Set(Array.from(seasonFilterGetter())) : new Set();
+      const range = rangeGetter ? rangeGetter() : null;
 
       filtered = allRows.filter(r=>{
-        // Generic column filters: AND across filters, match exact value
+        // 1) Generic filters (AND)
         for(const [k,set] of Object.entries(active)){
           if(set.size===0) continue;
           const val = (r[k]??'').toString();
           if(!set.has(val)) return false;
         }
-        // Season filter: OR across selected seasons, include rows with JA/TRUE for at least one selected season
+
+        // 2) Season filter (OR on selected seasons with DEELNAME JA)
         if(selectedSeasons.size>0){
           let ok = false;
-          for(const seasonLabel of selectedSeasons){
-            const srcCol = seasonMap[seasonLabel];
-            if(srcCol && boolFrom(r[srcCol])){ ok = true; break; }
+          for(const label of selectedSeasons){
+            const col = seasonMap[label];
+            if(col && boolFrom(r[col])){ ok = true; break; }
           }
           if(!ok) return false;
         }
+
+        // 3) Range on AANTAL KINDEREN for the same selected seasons
+        if(range){
+          const [minV,maxV] = range;
+          let match = false;
+          const labels = selectedSeasons.size>0 ? Array.from(selectedSeasons) : Object.keys(countMap);
+          for(const label of labels){
+            const countCol = countMap[label];
+            if(!countCol) continue;
+            const n = toInt(r[countCol]);
+            if(n!==null && n>=minV && n<=maxV){ match = true; break; }
+          }
+          if(!match) return false;
+        }
+
         return true;
       });
       renderKPIs(filtered);
@@ -161,27 +183,18 @@
       renderTable(filtered);
     }
 
-    function resetFilters(){
-      buildFilters(allRows);
-      filtered = allRows.slice();
-      renderKPIs(filtered);
-      renderMap(filtered);
-      renderTable(filtered);
-    }
-
-    function detectSeasonColumns(sample){
-      const found = {};
+    function detectSeasonAndCount(sample){
+      const sMap = {}; // label -> deelname col
+      const cMap = {}; // label -> aantal col
       for(const col of Object.keys(sample)){
         const lower = col.toLowerCase();
-        // Only participation columns, avoid "aantal kinderen"
-        if(!/deelname/.test(lower)) continue;
         const m = col.match(/(20\d{2})\s*[\/-]\s*(20\d{2})/);
-        if(m){
-          const label = `${m[1]}/${m[2]}`;
-          found[label] = col;
-        }
+        if(!m) continue;
+        const label = `${m[1]}/${m[2]}`;
+        if(lower.includes('deelname')) sMap[label] = col;
+        if(lower.includes('aantal') && lower.includes('kind')) cMap[label] = col;
       }
-      return found; // { '2022/2023': 'DEELNAME 2022/2023', ... }
+      return [sMap, cMap];
     }
 
     function buildFilters(rows){
@@ -189,28 +202,44 @@
       container.innerHTML='';
       filterGetters = {};
       seasonFilterGetter = null;
-      seasonMap = {};
+      rangeGetter = null;
+      seasonMap = {}; countMap = {};
 
       if(!rows.length) return;
-
       const sample = rows[0];
-      // Build combined season filter
-      seasonMap = detectSeasonColumns(sample);
+
+      // Detect season & count columns
+      [seasonMap, countMap] = detectSeasonAndCount(sample);
+
+      // 0) Combined Deelname (jaren)
       if(Object.keys(seasonMap).length){
-        const seasonValues = Object.keys(seasonMap);
-        const getter = buildMultiSelect(container, 'Deelname (jaren)', seasonValues);
+        const getter = buildMultiSelect(container, 'Deelname (jaren)', Object.keys(seasonMap));
         if(getter) seasonFilterGetter = getter;
       }
 
-      // Build generic filters for all other columns except coords and the specific season columns we just combined
-      const exclude = new Set(Object.values(seasonMap).map(s=>s.toLowerCase()));
+      // 1) Aantal kinderen (range) — over geselecteerde jaren; bij geen selectie over alle jaren
+      // determine global min/max over all count columns
+      let minVal = Infinity, maxVal = -Infinity;
+      rows.forEach(r=>{
+        Object.values(countMap).forEach(col=>{
+          const n = toInt(r[col]);
+          if(n!==null){ if(n<minVal) minVal=n; if(n>maxVal) maxVal=n; }
+        });
+      });
+      if(minVal===Infinity){ minVal=0; maxVal=0; } // fallback
+      rangeGetter = buildRange(container, 'Aantal kinderen (min/max)', minVal, maxVal);
+
+      // 2) Generic filters for other columns (exclude specified ones and coords and the raw deelname/aantal columns we already handle)
+      const exclude = new Set(['lat','lon','latitude','longitude','breedtegraad','lengtegraad']);
+      const rawSeasonCols = new Set([...Object.values(seasonMap).map(v=>v.toLowerCase()), ...Object.values(countMap).map(v=>v.toLowerCase())]);
       const cols = Object.keys(sample).filter(k=>{
         const lower = k.toLowerCase();
-        if(['lat','lon','latitude','longitude','breedtegraad','lengtegraad'].includes(lower)) return false;
         if(exclude.has(lower)) return false;
+        if(rawSeasonCols.has(lower)) return false;
+        // remove user-requested filters
+        if(EXCLUDE_FILTERS.some(x => lower.includes(x))) return false;
         return true;
       });
-
       cols.forEach(col=>{
         const values = rows.map(r=> r[col]);
         const getter = buildMultiSelect(container, col, values);

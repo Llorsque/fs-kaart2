@@ -1,6 +1,7 @@
-# Schoolschaatsen – v9 (samengevoegd deelname-filter)
-- Excel is omgezet naar `data/schools.json`.
-- **Deelname-jaren** zijn samengevoegd tot één multi-select filter **“Deelname (jaren)”** met opties: `2022/2023`, `2023/2024`, `2024/2025`, `2025/2026` — automatisch gedetecteerd op basis van je kolomnamen (alleen kolommen die `DEELNAME` + jaartal bevatten).
-- Bij filteren geldt: een school wordt **getoond als er voor minstens één geselecteerd jaar** in de betreffende kolom **JA/WAAR/TRUE/1/X/Y** staat.  (Geen selectie → geen filtering op deelname.)
+# Schoolschaatsen – v10
+- **Samengevoegd deelname-filter** (Deelname (jaren): 2022/2023 … 2025/2026).
+- **Aantal kinderen**: één **range-schuif** (min/max). Filtert op de **aantallen die horen bij de gekozen jaren**. Als geen jaar gekozen is, wordt over **alle jaren** gekeken.
+- Verwijderd als filter: **NAAM SCHOOL/naam**, **Adres**, **Huisnummer/Huisnummer-toevoeging**, **Postcode**, **Plaatsnaam correspondentieadres**.
+- Overige filters blijven automatisch gebaseerd op kolomnamen (behalve coordinaten en de ruwe deelname/aantal-kolommen).
 
-Overige filters worden automatisch aangemaakt voor alle kolommen (behalve lat/lon en de afzonderlijke deelname-kolommen). Exporteer de huidige selectie via de knop **Exporteer gefilterd**.
+Pins worden geplot op basis van `lat/lon` in je data. Popup toont alle kolommen.
