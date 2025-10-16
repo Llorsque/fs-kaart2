@@ -1,7 +1,7 @@
 // Mode helpers
 const MODE_KEY = 'ss_mode_v1';
 function applyMode(mode){ if(mode==='mobile'){ document.body.classList.add('mobile'); } else { document.body.classList.remove('mobile'); } localStorage.setItem(MODE_KEY, mode); }
-function toggleMode(){ const m = document.body.classList.contains('mobile')?'mobile':'desktop'; applyMode(m==='mobile?' 'desktop':'mobile'); }
+function toggleMode(){ const m = document.body.classList.contains('mobile')?'mobile':'desktop'; applyMode(m==='mobile' ? 'desktop' : 'mobile'); }
 function loadMode(){ const m = localStorage.getItem(MODE_KEY)||'desktop'; applyMode(m); }
 
 // CSV export
