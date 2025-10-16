@@ -26,7 +26,9 @@ function exportCSV(rows, filename='export.csv'){
 
 // Multi-select dropdowns
 function buildMultiSelect(container, label, values){
-  const unique = Array.from(new Set(values.filter(v=>v!==''))).sort((a,b)=>a.localeCompare(b,'nl'));
+  const unique = Array.from(new Set(values.map(v => (v??'').toString().trim())));
+  unique.sort((a,b)=>a.localeCompare(b,'nl'));
+  if(unique.length===0) return null;
   const wrap = document.createElement('div'); wrap.className='filter';
   const lab = document.createElement('div'); lab.className='label'; lab.textContent = label;
   const control = document.createElement('div'); control.className='control';
@@ -40,10 +42,10 @@ function buildMultiSelect(container, label, values){
   const state = new Set();
   function refreshText(){ text.textContent = state.size ? Array.from(state).slice(0,3).join(', ') + (state.size>3?'…':'') : 'Alles'; }
 
-  unique.forEach(v=>{
+  unique.slice(0,200).forEach(v=>{
     const opt = document.createElement('div'); opt.className='opt';
     const cb = document.createElement('input'); cb.type='checkbox'; cb.value=v;
-    const sp = document.createElement('span'); sp.textContent=v;
+    const sp = document.createElement('span'); sp.textContent=v || '(leeg)';
     opt.appendChild(cb); opt.appendChild(sp); menu.appendChild(opt);
     cb.addEventListener('change', ()=>{ if(cb.checked) state.add(v); else state.delete(v); refreshText(); });
   });
@@ -52,11 +54,4 @@ function buildMultiSelect(container, label, values){
   document.addEventListener('click', (e)=>{ if(!wrap.contains(e.target)) wrap.classList.remove('open'); });
 
   return ()=> state; // getter
-}
-
-function extractSeasonKey(text){
-  const s = (text??'').toString();
-  const m = s.match(/(\d{4})\s*[,\/-]\s*(\d{4})/);
-  if(m){ return `${m[1]}/${m[2]}`; }
-  return null;
 }

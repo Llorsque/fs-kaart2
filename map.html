@@ -14,7 +14,6 @@
     <div class="controls-row">
       <button class="btn btn-small" onclick="toggleMode()">📱 / 🖥️</button>
       <button id="exportBtn" class="btn btn-small btn-ghost">⬇️ Exporteer gefilterd</button>
-      <span id="sourceLbl" class="sub"></span>
       <span class="spacer"></span>
       <a class="btn btn-small btn-ghost" href="index.html">🏠</a>
     </div>
@@ -24,7 +23,7 @@
     <aside class="sidebar">
       <header class="card">
         <h1>🗺️ Kaart & live aantallen</h1>
-        <p class="sub">Data wordt geladen uit <code>data/schools.sample.json</code>. Geen uploads.</p>
+        <p class="sub">Data is ingeladen uit je Excel (als JSON). Filters zijn gebaseerd op **alle** kolomnamen.</p>
       </header>
 
       <section class="card">
@@ -40,10 +39,7 @@
         <h3 style="margin-top:0">Live aantallen</h3>
         <div class="kpis">
           <div class="kpi"><div class="label">Totaal (gefilterd)</div><div id="k_total" class="n">–</div></div>
-          <div class="kpi"><div class="label">Geocodeerd (lat/lon)</div><div id="k_geo" class="n">–</div></div>
-        </div>
-        <div style="margin-top:8px">
-          <div class="legend" id="yearPills"></div>
+          <div class="kpi"><div class="label">Met lat/lon</div><div id="k_geo" class="n">–</div></div>
         </div>
       </section>
 
@@ -61,8 +57,8 @@
   <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
   <script src="utils.js"></script>
   <script>
-    const LOCAL_URL = 'data/schools.sample.json';
-    let allRows = [], filtered = [], yearSeasons = [];
+    const DATA_URL = 'data/schools.json'; // built from your Excel
+    let allRows = [], filtered = [];
     let filterGetters = {};
 
     const map = L.map('map').setView([52.2,5.3],7);
@@ -71,7 +67,7 @@
 
     function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
     function buildPopup(row){
-      const title = row['naam'] || row['NAAM SCHOOL'] || row['School'] || 'Onbekend';
+      const title = row['NAAM SCHOOL'] || row['naam'] || row['School'] || row['school'] || 'Onbekend';
       const pairs = Object.entries(row).map(([k,v])=>`<tr><th style="text-align:left;padding-right:8px">${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join('');
       return `<div><strong>${escapeHtml(title)}</strong><br/><table>${pairs}</table></div>`;
     }
@@ -90,12 +86,27 @@
       });
     }
 
+    function findLat(row){
+      for(const k of Object.keys(row)){
+        const key = k.toLowerCase();
+        if(key==='lat' || key==='latitude' || key==='breedtegraad') return parseFloat(row[k].toString().replace(',','.'));
+      }
+      return NaN;
+    }
+    function findLon(row){
+      for(const k of Object.keys(row)){
+        const key = k.toLowerCase();
+        if(key==='lon' || key==='long' || key==='longitude' || key==='lengtegraad') return parseFloat(row[k].toString().replace(',','.'));
+      }
+      return NaN;
+    }
+
     function renderMap(rows){
       markerGroup.clearLayers();
       const markers = [];
       for(const r of rows){
-        const lat = parseFloat(r.lat ?? r.Latitude ?? r.LATITUDE);
-        const lon = parseFloat(r.lon ?? r.Longitude ?? r.LONGITUDE);
+        const lat = findLat(r);
+        const lon = findLon(r);
         if(!isFinite(lat) || !isFinite(lon)) continue;
         const m = L.marker([lat, lon]);
         m.bindPopup(buildPopup(r));
@@ -111,12 +122,6 @@
 
     function renderKPIs(rows){
       document.getElementById('k_total').textContent = rows.length;
-      const pills = document.getElementById('yearPills'); pills.innerHTML='';
-      for(const s of yearSeasons){
-        const n = rows.reduce((acc,r)=> acc + (r['_season__'+s]===true?1:0), 0);
-        const div = document.createElement('div'); div.className='pill'; div.textContent = `${s}: ${n}`;
-        pills.appendChild(div);
-      }
     }
 
     function applyFilters(){
@@ -150,28 +155,21 @@
       container.innerHTML='';
       filterGetters = {};
       if(!rows.length) return;
+
       const sample = rows[0];
-
-      // Prefer: seizoenen, gemeente/plaats, provincie
-      const preferred = ["deelname_2022_2023","deelname_2023_2024","deelname_2024_2025","aangemeld_2025_2026",
-                         "gemeente","GEMEENTENAAM","plaats","PLAATSNAAM","provincie","Provincie","PROVINCIE"];
-      const cols = Object.keys(sample).filter(k=>!['lat','lon','Latitude','Longitude','LATITUDE','LONGITUDE','postcode','adres','naam'].includes(k));
-      const picked=[];
-
-      function addFilter(col,label){
-        const values = rows.map(r=> (r[col]??'').toString().trim());
-        if(values.filter(Boolean).length===0) return;
-        const getter = buildMultiSelect(container, label||col, values);
-        filterGetters[col]=getter; picked.push(col);
-      }
-
-      preferred.forEach(p=>{ if(cols.includes(p)) addFilter(p,p); });
-      cols.filter(c=>!picked.includes(c)).slice(0,6).forEach(c=> addFilter(c,c));
+      const cols = Object.keys(sample).filter(k=>{
+        const lower = k.toLowerCase();
+        return !['lat','lon','latitude','longitude','breedtegraad','lengtegraad'].includes(lower);
+      });
+      cols.forEach(col=>{
+        const values = rows.map(r=> r[col]);
+        const getter = buildMultiSelect(container, col, values);
+        if(getter) filterGetters[col] = getter;
+      });
     }
 
     async function loadData(){
-      document.getElementById('sourceLbl').textContent = 'Bron: local JSON';
-      const res = await fetch(LOCAL_URL);
+      const res = await fetch(DATA_URL);
       const data = await res.json();
       allRows = data;
       filtered = allRows.slice();
